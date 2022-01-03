@@ -24,12 +24,38 @@ from abc import ABC, abstractmethod
 from logging import Logger
 from pathlib import Path
 import string
+from numba import njit
 from typing import Any, Callable, List, Tuple, Union
 
 import numpy as np
 import matplotlib.pyplot as plt
 
+@njit
+def linear_fnc(x, angle, bias):
+    return np.math.tan(angle) * x + bias
 
+@njit
+def distance_of_point_from_the_line(x, y, angle, bias):
+    y_difference = np.abs(linear_fnc(x, angle, bias) - y)
+    slope_squared = np.math.pow(np.math.tan(angle), 2)
+    return y_difference / np.math.sqrt(1.0 + slope_squared)
+
+@njit
+def fill_rgb_array(laser_image, angle, bias, width, rgb):
+    for i in range(laser_image.shape[0]):
+        for j in range(laser_image.shape[1]):
+            _x, _y = float(i), float(j)
+            distance = distance_of_point_from_the_line(_x, _y, angle, bias)
+
+            color = np.array([0.,0.,0.])
+            if distance <= width / 2.0:
+                color = rgb
+            if width / 2.0 <= distance <= 5 * width:
+                color = np.math.sqrt(width) / np.math.pow(distance, 2) * rgb
+
+
+            for z in range(3):
+                laser_image[i,j,z] = color[z]
 class Line:
     """
     Representation of the linear function.
@@ -44,7 +70,7 @@ class Line:
         self.bias = bias
 
     def __call__(self, x: float) -> float:
-        return np.math.tan(self.angle) * x + self.bias
+        return linear_fnc(x, self.angle, self.bias)
 
     def distance_of_point_from_the_line(self, x: float, y: float) -> float:
         """
@@ -55,15 +81,14 @@ class Line:
         :param y: Y coordinate of a point.
         :returns: Distance.
         """
-        y_difference = np.abs(self(x) - y)
-        slope_squared = np.math.pow(np.math.tan(self.angle), 2)
-        return y_difference / np.math.sqrt(1.0 + slope_squared)
+        return distance_of_point_from_the_line(x, y, self.angle, self.bias)
 
     def to_numpy(self) -> np.ndarray:
         """
         Convert instance to a numpy array.
         """
         return np.array([self.angle, self.bias])
+
 
 
 class Range:
@@ -175,18 +200,21 @@ class ImageGenerator:
         """
         laser_image = np.zeros(shape)
         if laser_image.ndim == 3 and laser_image.shape[2] == 3:
-            for i in range(shape[0]):
-                for j in range(shape[1]):
-                    rgb = adv_object(i, j)
-                    for chan in range(3):
-                        laser_image[i, j, chan] = np.clip(rgb[chan], 0, 1)
-        elif laser_image.ndim == 2:
-            for i in range(shape[0]):
-                for j in range(shape[1]):
-                    rgb = np.mean(adv_object(i, j))
-                    laser_image[i, j] = np.clip(rgb, 0, 1)
+            fill_rgb_array(laser_image, adv_object.line.angle, adv_object.line.bias, adv_object.width, adv_object.rgb)
+            np.clip(laser_image, 0, 1, out=laser_image)
+        #     for i in range(shape[0]):
+        #         for j in range(shape[1]):
+        #             rgb = adv_object(i, j)
+        #             for chan in range(3):
+        #                 laser_image[i, j, chan] = np.clip(rgb[chan], 0, 1)
+        # elif laser_image.ndim == 2:
+        #     for i in range(shape[0]):
+        #         for j in range(shape[1]):
+        #             rgb = np.mean(adv_object(i, j))
+        #             laser_image[i, j] = np.clip(rgb, 0, 1)
 
         return laser_image
+
 
 
 def wavelength_to_rgb(wavelength: Union[float, int]) -> List[float]:
