@@ -36,6 +36,7 @@ from art.attacks.evasion.laser_attack.utils import (
     Line,
     wavelength_to_rgb,
 )
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ class LaserAttack(EvasionAttack):
         :return: List of tuples of adversarial objects and predicted class.
         """
         result = []
-        for image_index in range(x.shape[0]):
+        for image_index in tqdm(range(x.shape[0])):
             laser_params, adv_class = self._generate_params_for_single_input(
                 x[image_index], y[image_index] if y is not None else None
             )
